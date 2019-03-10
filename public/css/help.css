@@ -1,0 +1,14 @@
+/* help.css */
+body
+{
+  text-align: center;
+  display: block;
+  margin: 0 auto;
+  font-family: arial;
+  width: 400px;
+}
+
+ul
+{
+  padding-left: 20px;
+}
