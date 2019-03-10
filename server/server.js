@@ -71,7 +71,6 @@ io.on('connection', (socket) => {
          var userTimeLimit = checkTimeLimit(userDB, userExist);
          // send history to frontend
          sendHistory(histToSend);
-         console.log(userDB[userExist].date);
          //if user is limited
          if (userJokeLimit && userTimeLimit){
            //send limit on frontend
