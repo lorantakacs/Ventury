@@ -15,8 +15,8 @@ Jokes can be received from this API: http://www.icndb.com/api/
 ////////////////////////////////////////////////////////////////////////////////////
 
 To run the application and check the code please visit the following links
-link
-link
+https://gentle-inlet-95966.herokuapp.com/
+https://github.com/lorantakacs/Ventury.git
 
 Solution:
 ////////////////////////////////////////////////////////////////////////////////////
