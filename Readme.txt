@@ -14,10 +14,6 @@ Please don’t use any externally hosted NLP providers)
 Jokes can be received from this API: http://www.icndb.com/api/
 ////////////////////////////////////////////////////////////////////////////////////
 
-To run the application and check the code please visit the following links
-https://gentle-inlet-95966.herokuapp.com/
-https://github.com/lorantakacs/Ventury.git
-
 Solution:
 ////////////////////////////////////////////////////////////////////////////////////
 Programing languages: frontend - HTML, CSS, Javascript
@@ -42,6 +38,19 @@ server/server.js - server side Javascript executed by nodeJs
 package.json, package-lock.json - list of nodeJs dependencies
 
 Readme.txt - detailed explanation of the project
+
+Set-up:
+---------------------------
+To run the application please complete the following steps
+- make sure you user chore as your browser
+- install nodeJs to your computer from https://nodejs.org/en/
+- clone the git repository or download the project files from the following link
+https://github.com/lorantakacs/Ventury.git
+- open CMD and navigate to the projects directory
+- when you are in the projects directory please navigate to the file called server and run the following command:
+  - node server.js
+- now please open chrome and visit the following link
+  - http://localhost:3000/
 
 User Guide:
 ---------------------------
