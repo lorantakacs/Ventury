@@ -24,10 +24,12 @@ app.use(express.static(publicPath));
 const maxJokes = 10;
 const apiUrl = 'http://api.icndb.com/jokes/random/' + maxJokes;
 const dbPath = '../db/user-info.json';
-var dataReceived = false;
 
-var requestJokes, createNewUser, getDB, checkUser, checkJokeLimit, checkTimeLimit, sendHistory, setlimitedTrue, sendLimitOf, deleteJokes, addJokesToUser, sendJoke, calcTimeout, sendLimitReached, deleteUser, updateDB, getCurrentTime;
+
+
 ///////////////////////////////////////////////////////////////////////////
+var userSignInData;
+var requestJokes, getDB, checkUser, sendHistory, createNewUser, updateDB, checkLimits, getCurrentTime, checkAnswer, sendAnswer, getJokeToSend, setLastNo, deleteJokes, deleteUser;
 
 ///////////////////////////////////////////////////////////////////////////
 //listening to request from frontend
@@ -54,74 +56,79 @@ io.on('connection', (socket) => {
   ///////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////////////////////////////////////////////////////
-  //receive sign in info and do actions
-  socket.on('signInData', (signInData) => {
-     //check if access is user or admin
-     if (signInData.access === 'user'){
-       //retrieve user json
-       var userDB = getDB(dbPath);
-       var userDBLength = userDB.length;
-       // check if user exist
-       var userExist = checkUser(signInData, userDB);
-       // collect history to send
-       var histToSend = (userExist) ? userDB[userExist].chatHist : ' ';
-       //if user exists check joke and time limit
-       if(userExist){
-         var userJokeLimit = checkJokeLimit(userDB, userExist, maxJokes);
-         var userTimeLimit = checkTimeLimit(userDB, userExist);
-         // send history to frontend
-         sendHistory(histToSend);
-         //if user is limited
-         if (userJokeLimit && userTimeLimit){
-           //send limit on frontend
-           setlimitedTrue();
-        //if time limit expired
-         } else if (userJokeLimit && userTimeLimit == false) {
-           //delete existing jokes and store db in variable
-           var dbDeletedJokes = deleteJokes(userDB, userExist);
-           //request new Jokes from API
-           requestJokes(apiUrl).then((val) => {
-             // storing fetched array of jokes in variable
-             var jokesFromAPI = val.value;
-             //add new jokes to existing user
-             var dbWithNewJokes = addJokesToUser(dbDeletedJokes, userExist, jokesFromAPI);
-             // send limit time to fronend to continue only if specific text is entrered by user
-             sendLimitOf();
-             // update DB
-             updateDB(userDB, dbPath);
-           }).catch((err) => {
-             console.log(err);
-           });
-           //if user not limited
-         } else if (userJokeLimit == false){
-           // send one joke to the frontend
-           if (userDB[userExist].displayedJokes < (userDB[userExist].jokes.length - 1)){
-             // sendJoke(userExist, userDB, false, dbPath, false);
-           } else {
-             var limitTime = calcTimeout(userDB, userExist);
-             sendJoke(userExist, userDB, false, dbPath, true);
-             sendLimitReached(limitTime);
-           };
-         };
-         ///////////////////changes 2019 03 10
-       } else {
-         //request Jokes
-         requestJokes(apiUrl).then((val) => {
-           // storing fetched array of jokes in variable
-           var jokesFromAPI = val.value;
-           // create user object and add to database
-           createNewUser(signInData, jokesFromAPI, userDB, dbPath);
-           // send one joke to the frontend
-           // sendJoke(userDBLength, getDB, true, dbPath, false);
-         }).catch((err) => {
-           console.log(err);
-         });
-       };
-     } else {
-       console.log('clear user');
-     };
-   });
-   ///////////////////////////////////////////////////////////////////////////
+  //recive sign in data
+  socket.on('signInData',(signInData) => {
+    userSignInData = signInData;
+    // get database
+    var userDB = getDB(dbPath);
+    // check if user exist
+    var userExist = checkUser(signInData, userDB);
+    // if user exist then show chathistory else cretae user with jokes
+    if(userExist){
+      //send chat history
+      sendHistory(userDB[userExist].chatHist);
+    } else {
+      //request Jokes
+      requestJokes(apiUrl).then((val) => {
+        // storing fetched array of jokes in variable
+        var jokesFromAPI = val.value;
+        // create user object and add to database
+        createNewUser(signInData, jokesFromAPI, userDB, dbPath);
+      }).catch((err) => {
+        console.log(err);
+      });
+    };
+  });
+  ///////////////////////////////////////////////////////////////////////////
+
+  ///////////////////////////////////////////////////////////////////////////
+  //recive user text inpu
+  socket.on('userInput', (textInput) => {
+    // get database
+    var userDB = getDB(dbPath);
+    var userExist = checkUser(userSignInData, userDB);
+    //check if user reached limits
+    var jokeTimeLimit = checkLimits(userExist, userDB);
+    if (jokeTimeLimit[0] == false && userDB[userExist].chatHist === ' '){
+      checkAnswer(textInput, userDB, userExist, true, false);
+    } else if (jokeTimeLimit[0] == false && userDB[userExist].chatHist !== ' '){
+      checkAnswer(textInput, userDB, userExist, false, false);
+    } else if (jokeTimeLimit[0] == true && jokeTimeLimit[1] == false){
+      //delete jokes, request new ones save them and display new message
+      var updatedDB = deleteJokes(userDB, userExist);
+      // request Jokes
+      requestJokes(apiUrl).then((val) => {
+        // storing fetched array of jokes in variable
+        var jokesFromAPI = val.value;
+        // udate user object with new jokes and save to db
+        updatedDB[userExist].jokes = jokesFromAPI;
+        updatedDB[userExist].displayedJokes = 0;
+        updateDB(updatedDB, dbPath);
+        // get updated db
+        var updateDBToCheck = getDB(dbPath);
+        // check answer
+        checkAnswer(textInput, updateDBToCheck, userExist, false, true);
+      }).catch((err) => {
+        console.log(err);
+      });
+    } else if (jokeTimeLimit[0] == true && jokeTimeLimit[1] == true){
+      return
+    };
+  });
+  ///////////////////////////////////////////////////////////////////////////
+
+  ///////////////////////////////////////////////////////////////////////////
+  //update chathistory
+  socket.on('chatHist', (histHtml) => {
+    var user = histHtml[0];
+    var histText = histHtml[1];
+    var userDB = getDB(dbPath);
+    var userExist = checkUser(user, userDB);
+    userDB[userExist].chatHist = ' ';
+    userDB[userExist].chatHist = histText;
+    updateDB(userDB, dbPath);
+  });
+  /////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////////////////////////////////////////////////////
   //reset user jokes
@@ -136,44 +143,6 @@ io.on('connection', (socket) => {
   ///////////////////////////////////////////////////////////////////////////
 
   ///////////////////////////////////////////////////////////////////////////
- //check asnwer and send response
-   socket.on('answData', (answData, answer) => {
-      if (answer === 'Yes') {
-        var userDB = getDB(dbPath);
-        var userExist = checkUser(answData, userDB);
-        var userJokeLimit = checkJokeLimit(userDB, userExist, maxJokes);
-        var userTimeLimit = checkTimeLimit(userDB, userExist);
-        var limitTime = calcTimeout(userDB, userExist);
-        if (userJokeLimit && userTimeLimit){
-          // sendLimitReached(limitTime);
-          setlimitedTrue();
-        } else {
-          if (userDB[userExist].displayedJokes < (userDB[userExist].jokes.length - 1)){
-            sendJoke(userExist, userDB, false, dbPath, false);
-          } else {
-            sendJoke(userExist, userDB, false, dbPath, true);
-            //tell to fronend that limit is reached
-            sendLimitReached(limitTime);
-          };
-        };
-      };
-    });
-  ///////////////////////////////////////////////////////////////////////////
-
-  //////////////////////////////////////////////////////////////////////////
-  //update chat history
-  socket.on('chatHist', (histHtml) => {
-    var user = histHtml[0];
-    var histText = histHtml[1];
-    var userDB = getDB(dbPath);
-    var userExist = checkUser(user, userDB);
-    userDB[userExist].chatHist = ' ';
-    userDB[userExist].chatHist = histText;
-    updateDB(userDB, dbPath);
-  });
-  ///////////////////////////////////////////////////////////////////////////
-
-  ///////////////////////////////////////////////////////////////////////////
   //connect message
   socket.on('disconnect', () => {
      console.log('User was disconnected');
@@ -184,20 +153,6 @@ io.on('connection', (socket) => {
 
 ///////////////////////////////////////////////////////////////////////////
 //function descriptions
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// calculate remaining time
-calcTimeout = (db, userIndex) => {
-  var limit = (db[userIndex].date + 1440) * 60 * 1000;
-  var limitDate = new Date(limit);
-  var limitDateD = limitDate.getDay();
-  var limitDateH = limitDate.getHours();
-  var limitDateM = limitDate.getMinutes();
-  var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-  var limitArray = [days[limitDateD], limitDateH, limitDateM];
-  return limitArray;
-};
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
@@ -225,21 +180,6 @@ checkUser = (singInObj, dbObj) => {
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// check limit by time
-checkTimeLimit = (dbObj, userIndex) => {
-  var currentTime = getCurrentTime();
-  return ((dbObj[userIndex].date + 1440) > currentTime) ? true : false;
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// check limit by jokes
-checkJokeLimit = (dbObj, userIndex, jokeLimit) => {
-  return (dbObj[userIndex].displayedJokes >= jokeLimit) ? true : false;
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
 // create new user object and add to DB
 createNewUser = (userInfo, jokes, existingDB, path) => {
   var newUser = {
@@ -248,10 +188,11 @@ createNewUser = (userInfo, jokes, existingDB, path) => {
     lastName: userInfo.lastName,
     firstNameLow: userInfo.firstLow,
     lastNameLow: userInfo.lastLow,
-    date: userInfo.date,
+    date: 0,
     displayedJokes: 0,
     jokes: jokes,
     chatHist: ' ',
+    lastNo: false
   };
   //add new user to existing DB
   existingDB.push(newUser);
@@ -271,12 +212,117 @@ updateDB = (db, path) => {
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// delete jokes
-deleteJokes = (db, userIndex) => {
-  db[userIndex].jokes = [];
-  db[userIndex].displayedJokes = 0;
-  return db;
+// check user limit
+checkLimits = (el, db) => {
+  var limits = [];
+  var currentTime = getCurrentTime();
+  // check limit joke limit
+  limits[0] = (db[el].displayedJokes >= maxJokes) ? true : false;
+  // check time limit
+  limits[1] = (db[el].date + (1000 * 60 * 60 * 24) > currentTime) ? true : false;
+  return limits;
 };
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+// get current time in minutes
+getCurrentTime = () =>{
+  var date = new Date().getTime();
+  return date;
+};
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+// add message from user and server to chat window
+checkAnswer = (el, db, user, hiMessage, onePlease) => {
+  // set last no to true after to make the user type one joke please
+  if (onePlease){
+    setLastNo(db, user);
+  }
+  // check if user says hi at the beginning
+  if (hiMessage && el === 'hi'){
+    sendAnswer('hi');
+    return;
+  };
+  // evaluate user input and send response
+  if (db[user].lastNo === true && el !== 'one joke please'){
+    //sendAnswer('oneJokePlease');
+    return
+  } else {
+    switch (el) {
+      case 'one joke please':
+      case 'yes':
+      case 'yea':
+      case 'yep':
+      case 'y':
+      case 'yo':
+      case 'positive':
+      case 'fine':
+      case 'good':
+      case 'k':
+      case 'ok':
+      case 'okay':
+      case 'ja':
+      case 'true':
+      case 'please':
+      case 'yes please':
+      case 'naturlich':
+        // get message for client
+        var messageToClient = getJokeToSend(db, user);
+        sendAnswer(messageToClient[0]);
+        if(messageToClient[1]){sendAnswer('limit');}
+        break;
+      case 'no':
+      case 'nope':
+      case 'not':
+      case 'nix':
+      case 'nay':
+      case 'nein':
+      case 'negative':
+      case 'n':
+      case 'false':
+        //set user atribute to last joke no so the user can aswer only with one joke please
+        sendAnswer('no');
+        setLastNo(db, user);
+        break;
+      default: return;
+    };
+  };
+};
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+//get joke to user and update counter in db
+getJokeToSend = (db, user) => {
+  var joke
+  var jokeToSendIndex = db[user].displayedJokes;
+  var jokeToSend = [db[user].jokes[jokeToSendIndex].joke];
+  db[user].displayedJokes++;
+  db[user].date = new Date().getTime();
+  if (db[user].displayedJokes === maxJokes){
+    jokeToSend[1] = true
+  }
+  db[user].lastNo = false;
+  updateDB(db, dbPath);
+  return jokeToSend;
+};
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+//set last message to no
+setLastNo = (db, user) => {
+  db[user].lastNo = true;
+  updateDB(db, dbPath);
+};
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+//set last message to no
+deleteJokes = (db, user) => {
+  db[user].jokes = [];
+  db[user].displayedJokes = 0;
+  return db;
+}
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
@@ -288,28 +334,11 @@ deleteUser = (db, userIndex) => {
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// add jokes to existing user
-addJokesToUser = (db, userIndex, jokes) => {
-  db[userIndex].jokes = jokes;
-  return db
-};
+//send information to client
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// get current time in minutes
-getCurrentTime = () =>{
-  var date = new Date().getTime();
-  var dateMinutes = date / (1000 * 60);
-  return dateMinutes;
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// send infromation to frontend
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// send history
+//send history to client
 sendHistory = (el) => {
   io.emit('history', {
     history: el
@@ -318,53 +347,11 @@ sendHistory = (el) => {
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// send history
-setlimitedTrue = () => {
-  io.emit('set-limit');
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// send history
-sendLimitOf = () => {
-  io.emit('set-after-time-limit');
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// send history
-setlimitedTrue = () => {
-  io.emit('set-limit');
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// check time limit
-sendLimitReached = (el) => {
-  io.emit('limit-reached', {
-    timeLimit: el
+//send message to client
+sendAnswer = (el) => {
+  io.emit('response-server', {
+    message: el
   });
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// send 1 joke to frontend
-sendJoke = (userPosition, dbObj, initSeparator, path, limiter) => {
-  var db = (initSeparator) ? dbObj(path) : dbObj;
-  var jokeIndex = db[userPosition].displayedJokes;
-  var joketoSend = db[userPosition].jokes[jokeIndex].joke;
-  //send joke to frontend and specify if limiter should be set on on frontend
-  io.emit('jokeToDisplay', {
-    jokeToDisplay: joketoSend,
-    lastOne: limiter
-  });
-  //add one to displayed joke counter
-  db[userPosition].displayedJokes++;
-  // update Time
-  var currentTime = getCurrentTime();
-  db[userPosition].date = currentTime;
-  // update DB
-  updateDB(db, path);
 };
 ///////////////////////////////////////////////////////////////////////////
 

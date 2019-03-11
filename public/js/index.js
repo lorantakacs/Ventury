@@ -7,12 +7,14 @@ var socket = io();
 ///////////////////////////////////////////////////////////////////////////
 //variable and function declaration
 // var signedIn = false;
-var limited = false;
-var negativeMessage = false;
-var pleaseToContinue = false;
-var dataToServer;
-var collectUseName, sendSIData, sendResetData, scrollFunc, yesMessageFunc, noMessageFunc, welcomeMessageFunc,  evalTextInput, limitMessage, clearInput, openChat, addMessage, sendAnswData, histFromChat;
+
+
+
+
+
 ///////////////////////////////////////////////////////////////////////////
+var signInData;
+var collectSignIn, sendSignIn, checkHistory, collectAnswer, addToChat, sendAnswer, histFromChat, calcTimeout, sendResetData;
 
 ///////////////////////////////////////////////////////////////////////////
 //action control depending on user input
@@ -21,64 +23,59 @@ var collectUseName, sendSIData, sendResetData, scrollFunc, yesMessageFunc, noMes
 ///////////////////////////////////////////////////////////////////////////
 //action when sign in clicked
 $('#sign-in').click(function(){
-  //collect data to send to server
-  dataToServer = collectUseName();
-  //clear input field
-  $('#first-name, #last-name').val('');
-  // iff sign in data exist
-  if (dataToServer){
-    //hide sign in elements depending on access
-    if (dataToServer.access === 'admin'){
+  //collect data from user
+  signInData = collectSignIn();
+  // check user data
+  if (signInData) {
+    // console.log(signInData);
+    // check if user or admin
+    if (signInData.access === 'user'){
+      //send sign in to server
+      sendSignIn(signInData);
+      //hide sign in button and show chat window and sign out
+      $('#sign-in, .name-input').toggle();
+      $('#collapseOne').slideToggle( "slow" );
+      // show sign out button as block
+      $('#sign-out').toggle(function(){
+        if ($(this).is(':visible'))
+           $(this).css('display','block');
+      });
+    } else {
+      //hide sign in and show reset and sign out button
       $('#sign-in').toggle();
       // show reset button as block
       $('#reset').toggle(function(){
         if ($(this).is(':visible'))
            $(this).css('display','block');
       });
-    } else {
-      $('.name-input, #sign-in').toggle();
-      // open dialog box if it is not opened
-      openChat();
+      // show sign out button as block
+      $('#sign-out').toggle(function(){
+        if ($(this).is(':visible'))
+           $(this).css('display','block');
+      });
     };
-    //send sign in info
-    sendSIData(dataToServer);
-    // show sign out button as block
-    $('#sign-out').toggle(function(){
-      if ($(this).is(':visible'))
-         $(this).css('display','block');
-    });
   } else {
-    alert('Please fill out all name fields');
+    alert('Please fill out both name fileds');
   };
 });
-// changes 2019 03 10
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
 //action when reset clicked
 $('#reset').click(function(){
-  //collect data to send to server
-  var userToReset = collectUseName();
-  // if user exist
-  if (userToReset){
-    //check if signed in as chuch Norris
-    if (userToReset.firstLow === 'chuck' || userToReset.lastLow === 'norris') {
+  //collect data to send to server and
+  var userToReset = collectSignIn();
+  if(userToReset){
+    if (userToReset.firstLow === 'chuck' && userToReset.lastLow === 'norris'){
       alert('Please do not reset Chuck Norris...this will create a black hole');
     } else {
-      //send user info to reset user
+      // send user info to Reset
       sendResetData(userToReset);
-    };
+    }
   } else {
     alert('Please fill out all name fields');
-  }
-})
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//action when reset all clicked
-$('#reset-all').click(function(){
-
-})
+  };
+});
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
@@ -91,14 +88,27 @@ $('#sign-out').click(function(){
 ///////////////////////////////////////////////////////////////////////////
 //collect user input and do actions
 $('#send-btn').click(function(){
+  //check if history empty
+  var historyCheck = checkHistory();
+  // collect text from users
+  var answer = collectAnswer();
   //scroll the chat
   scrollFunc();
-  var textResponse = ($('#text-input').val());
-  var textResponseLow = ($('#text-input').val()).toLowerCase();
-  //clear text input
-  $('#text-input').val('');
-  //evaluate if user typed positive, negative or different
-  evalTextInput(textResponse, textResponseLow);
+  //if history does not exist user must say 'hi' else just simply add answer to chatwindow
+  if (historyCheck){
+    // add answwer to chatwindow
+    addToChat(answer[0], 'left', true);
+    // send response to Server
+    sendAnswer(answer[1]);
+  } else {
+    if (answer[0] === 'hi'){
+      // send response to Server
+      sendAnswer(answer[1]);
+      addToChat(answer[0], 'left', true);
+    } else {
+      alert(`Please say 'Hi' to Johnny 5`);
+    }
+  }
 });
 ///////////////////////////////////////////////////////////////////////////
 
@@ -107,16 +117,13 @@ $('#send-btn').click(function(){
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//collect user info
-collectUseName = function(){
+//collect sign in from user
+collectSignIn = function(){
   //get user name
   var firstName = $('#first-name').val();
   var lastName = $('#last-name').val();
   var firstLow = firstName.toLowerCase().trim();
   var lastLow = lastName.toLowerCase().trim();
-  //get sign in date
-  var date = new Date().getTime();
-  var dateMinutes = date / (1000 * 60) ;
   //check if all name fileds are filled out
   if (firstName === '' || lastName === ''){
     return;
@@ -128,8 +135,6 @@ collectUseName = function(){
     lastName: lastName,
     firstLow: firstLow,
     lastLow: lastLow,
-    date: dateMinutes,
-    chat: ' ',
     checkAccess: function(){
       if (firstLow === 'chuck' && lastLow === 'norris'){
         this.access = 'admin';
@@ -145,93 +150,20 @@ collectUseName = function(){
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//evaluate if user typed positive, negative, hi or else in tex box
-evalTextInput = function(text, textL){
-  //check if history is empty and check if last message was about tinme limit
-  if ( $('ul').children().length > 0 ) {
-    if (negativeMessage || pleaseToContinue){
-      if (textL === 'one joke please'){
-        pleaseToContinue = false;
-        negativeMessage = false;
-        evalAnswer = text;
-        //add positive message to dialog box from user input
-        yesMessageFunc(evalAnswer);
-      } else {
-        alert(`Cannot evaluate your message: '${text}'. Please type 'one joke please'`);
-      };
-    } else {
-      // evaulate message
-      var evalAnswer;
-      switch (textL) {
-        case 'hi':
-            evalAnswer = text;
-            //add positive message to dialog box from user input
-            welcomeMessageFunc(evalAnswer);
-          break;
-        case 'one joke please':
-        case 'yes':
-        case 'yea':
-        case 'yep':
-        case 'y':
-        case 'yo':
-        case 'positive':
-        case 'fine':
-        case 'good':
-        case 'k':
-        case 'ok':
-        case 'okay':
-        case 'ja':
-        case 'true':
-        case 'please':
-        case 'yes please':
-        case 'naturlich':
-            evalAnswer = text;
-            //add positive message to dialog box from user input
-            yesMessageFunc(evalAnswer);
-          break;
-        case 'no':
-        case 'nope':
-        case 'not':
-        case 'nix':
-        case 'nay':
-        case 'nein':
-        case 'negative':
-        case 'n':
-        case 'false':
-            evalAnswer = text;
-            negativeMessage = true;
-            //add negative message to dialog box from user input
-            noMessageFunc(evalAnswer);
-          break;
-        default:
-          alert('Cannot evaluate your message: ' + text);
-      };
-    };
-  } else {
-    if (textL === 'hi'){
-      evalAnswer = text;
-      //send welcome message
-      welcomeMessageFunc(evalAnswer);
-    } else {
-      alert(`Please say 'Hi' to Johnny 5`);
-    }
-  };
-};
+//history if user has any
+checkHistory = function(){
+  return ( $('ul').children().length > 0 ) ?  true : false;
+}
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//send reset data to server
-clearInput = function(el){
-  $('#first-name, #last-name').val('');
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//open dialog box if it is not opened
-openChat = function(){
-  if($('#collapseOne').css('display') == 'none'){
-    $('#collapseOne').slideToggle( "slow" );
-  };
+//history if user has any
+collectAnswer = function(){
+  var textResponse = $('#text-input').val();
+  var textResponseLow = ($('#text-input').val()).toLowerCase();
+  var textResponseTrimmed = textResponse.trim();
+  var textResponseLowTrimmed = textResponseLow.trim();
+  return [textResponseTrimmed, textResponseLowTrimmed];
 };
 ///////////////////////////////////////////////////////////////////////////
 
@@ -249,66 +181,61 @@ scrollFunc = function(){
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//add yes message to dialog box from user input
-yesMessageFunc = function(el){
-  //add user message to chat if not limited
-  if (el){
-    if (limited == false){
-      addMessage(el, 'left', false);
-    };
-  } else {
-    if (limited == false){
-      addMessage('Yes', 'left', false);
-    };
-  }
-  //send positive request to server
-  sendAnswData(dataToServer, 'Yes');
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//add no message to dialog box from user input
-noMessageFunc = function(el){
-  //add user message to chat if not limited
-  if (el){
-    if (limited == false){
-      addMessage(el, 'left', false);
-    };
-  } else {
-    if (limited == false){
-      addMessage('No', 'left', false);
-    };
-  }
-  //add user notification of negative answer
-  if (limited == false){
-    var noMessage = `Thanks for checking out the application. You still can ask for jokes, just type in 'one joke please'`;
-    addMessage(noMessage, 'right', false);
+//add message to dialog box from user and server
+addToChat = function(message, position, client){
+  var messageToDisplay1, messageToDisplay2;
+  switch (message) {
+    case 'hi':
+        messageToDisplay1 = 'Hi!'
+        messageToDisplay2 = '<br>Would you like to read a joke?'
+      break;
+    case 'no':
+        if (client){
+          messageToDisplay1 = message;
+        } else {
+          messageToDisplay1 = `Thanks for checking out the application. You can still ask for jokes, just type in 'one joke please'`
+        };
+        messageToDisplay2 = ''
+      break;
+    case 'yes':
+        messageToDisplay1 = message
+        messageToDisplay2 = '<br>Would you like to read one more joke?';
+      break;
+    case 'limit':
+        if (client){
+          messageToDisplay1 = message
+        } else {
+          var limitTime = calcTimeout();
+          console.log(limitTime);
+          messageToDisplay1 = `You reached your 10 joke limit. Please wait until  ${limitTime[0]} at ${limitTime[1]}:${limitTime[2]}  hours (24 hours). When the time is up please type 'one joke please'`;
+        }
+        messageToDisplay2 = '';
+      break;
+    default:
+      messageToDisplay1 = message;
+      if (client){
+        messageToDisplay2 = '';
+      } else {
+        messageToDisplay2 = '<br>Would you like to read one more joke?';
+      };
   };
-  //send  negative request to server
-  sendAnswData(dataToServer, 'No');
+  if (client) {messageToDisplay2 = '';};
+  $('.chat').append('<li class=' + position + '><div class="chat-body"><p><strong>' + messageToDisplay1 + '</strong>' + messageToDisplay2 +'</p></div></li>');
 };
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//add no message to dialog box from user input
-welcomeMessageFunc = function(el){
-  //add user and welcome message to chat if not limited
-  if (limited == false){
-    addMessage(el, 'left', false);
-    var welcomeMessage = 'Hi! Would you like to read a joke?';
-    addMessage(welcomeMessage, 'right', false);
-  };
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//add message to dialog box
-addMessage = function(message, position, server){
-  var question;
-  (server) ? question = '<br>Would you like to read one more joke?' : question = '';
-  $('.chat').append('<li class=' + position + '><div class="chat-body"><p><strong>' + message + '</strong>' + question +'</p></div></li>');
-  //send history to server
-  histFromChat();
+// calculate remaining time
+calcTimeout = function(){
+  var currDate = new Date().getTime();
+  var limit = currDate + (1000 * 60 * 60 * 24);
+  var limitDate = new Date(limit);
+  var limitDateD = limitDate.getDay();
+  var limitDateH = limitDate.getHours();
+  var limitDateM = limitDate.getMinutes();
+  var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  var limitArray = [days[limitDateD], limitDateH, limitDateM];
+  return limitArray;
 };
 ///////////////////////////////////////////////////////////////////////////
 
@@ -318,28 +245,21 @@ addMessage = function(message, position, server){
 
 ///////////////////////////////////////////////////////////////////////////
 //send sign in data to server
-sendSIData = function(el){
+sendSignIn = function(el){
   socket.emit('signInData', el);
 };
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//send answer to server
-sendAnswData = function(el, answer){
-  socket.emit('answData', el, answer);
-};
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//send reset data to server
-sendResetData = function(el){
-  socket.emit('resetData', el);
-};
+//send sign in data to server
+sendAnswer = (el) => {
+  socket.emit('userInput', el);
+}
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
 //collect all messages from chat wildow and send to server
-histFromChat = function() {
+histFromChat = function(dataToServer) {
   var chatHtml = $('.chat').html();
   var histArray = [dataToServer, chatHtml]
   socket.emit('chatHist', histArray);
@@ -347,12 +267,14 @@ histFromChat = function() {
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//get message from server and display it
-socket.on('jokeToDisplay', function(joke){
+//send user to reset in db
+sendResetData = function(el){
+  socket.emit('resetData', el);
+};
+///////////////////////////////////////////////////////////////////////////
 
-  //diplsay message
-  (joke.lastOne) ? addMessage(joke.jokeToDisplay, 'right', false) : addMessage(joke.jokeToDisplay, 'right', true);
-});
+///////////////////////////////////////////////////////////////////////////
+//get data from server
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
@@ -363,36 +285,11 @@ socket.on('history', function(hist){
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-//when limit reached display the following message
-socket.on('limit-reached', function(limit){
-  //set up time limit message
-  var limitmessage = `You reached your 10 joke limit. Please wait until  ${limit.timeLimit[0]} at ${limit.timeLimit[1]}:${limit.timeLimit[2]}  hours (24 hours). When the time is up please type 'one joke please'`;
-  //add limit message
-  if (limited == false){
-    addMessage(limitmessage, 'right', false);
-  };
-  limited = true;
-});
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//set limit - no message is sent to server when it is true
-socket.on('set-limit', function(){
-  limited = true;
-});
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//set limit - no message is sent to server when it is true
-socket.on('set-after-time-limit', function(){
-  pleaseToContinue = true;
-});
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-//connect message
-socket.on('connect', function(){
-  console.log('connected to server');
+//get response from server
+socket.on('response-server', function(message){
+  addToChat(message.message, 'right', false);
+  // collect history from chat
+  histFromChat(signInData);
 });
 ///////////////////////////////////////////////////////////////////////////
 
